@@ -87,6 +87,22 @@
           "deskripsi": { "type": "string", "nullable": true, "example": "Panduan pengembangan aplikasi mobile Android." }
         }
       },
+      "BookUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "id_kategori": { "type": "integer", "example": 1 },
+          "kode_buku": { "type": "string", "maxLength": 30, "example": "BK-TI-010" },
+          "isbn": { "type": "string", "maxLength": 20, "nullable": true },
+          "judul": { "type": "string", "maxLength": 200 },
+          "penulis": { "type": "string", "maxLength": 150 },
+          "penerbit": { "type": "string", "maxLength": 150 },
+          "tahun_terbit": { "type": "integer", "example": 2026 },
+          "stok_total": { "type": "integer", "minimum": 0, "example": 6 },
+          "stok_tersedia": { "type": "integer", "minimum": 0 },
+          "lokasi_rak": { "type": "string", "maxLength": 50, "nullable": true },
+          "deskripsi": { "type": "string", "nullable": true }
+        }
+      },
       "MemberCreateRequest": {
         "type": "object",
         "required": ["nim", "nama_lengkap", "email", "password"],
@@ -147,6 +163,17 @@
           "tarif_per_hari": { "type": "number", "minimum": 0, "default": 1000, "example": 1000 },
           "total_denda": { "type": "number", "minimum": 0, "description": "Opsional, otomatis hari_terlambat * tarif_per_hari" },
           "keterangan": { "type": "string", "nullable": true, "example": "Catatan denda korektif" }
+        }
+      },
+      "FineUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "hari_terlambat": { "type": "integer", "minimum": 0, "example": 3 },
+          "tarif_per_hari": { "type": "number", "minimum": 0, "example": 1000 },
+          "total_denda": { "type": "number", "minimum": 0, "example": 3000 },
+          "status_denda": { "type": "string", "enum": ["BELUM_LUNAS", "LUNAS"], "example": "LUNAS" },
+          "tanggal_bayar": { "type": "string", "format": "date", "nullable": true, "example": "2026-11-27" },
+          "keterangan": { "type": "string", "nullable": true, "example": "Koreksi nominal denda" }
         }
       },
       "FinePayRequest": {
@@ -358,7 +385,7 @@
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookCreateRequest" } } }
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookUpdateRequest" } } }
         },
         "responses": {
           "200": { "description": "Data buku diperbarui" },
@@ -375,7 +402,7 @@
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookCreateRequest" } } }
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookUpdateRequest" } } }
         },
         "responses": {
           "200": { "description": "Data buku diperbarui" }
@@ -684,11 +711,12 @@
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FineCreateRequest" } } }
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FineUpdateRequest" } } }
         },
         "responses": {
           "200": { "description": "Catatan denda diperbarui" },
-          "400": { "description": "Nilai negatif ditolak" }
+          "400": { "description": "Nilai negatif ditolak" },
+          "409": { "description": "Denda LUNAS tidak boleh diubah nominal/statusnya" }
         }
       },
       "patch": {
@@ -700,7 +728,7 @@
         ],
         "requestBody": {
           "required": true,
-          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FineCreateRequest" } } }
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FineUpdateRequest" } } }
         },
         "responses": {
           "200": { "description": "Catatan denda diperbarui" }
