@@ -1,3 +1,4 @@
+const db = require('../config/db');
 const AppError = require('../utils/AppError');
 const fineRepository = require('../repositories/fineRepository');
 const { validateUpdateFine } = require('../validators/fineValidator');
@@ -58,72 +59,113 @@ const createFine = async (data) => {
 };
 
 const updateFine = async (idDenda, rawBody) => {
-  const existing = await fineRepository.findById(idDenda);
-  if (!existing) {
-    throw new AppError('Catatan denda tidak ditemukan', 404);
-  }
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  const validated = validateUpdateFine(rawBody, existing);
-
-  // Arsip pelunasan final: denda LUNAS tidak boleh dikembalikan ke BELUM_LUNAS atau diubah nominalnya
-  if (existing.status_denda === FINE_STATUS.LUNAS) {
-    if (validated.status_denda !== FINE_STATUS.LUNAS) {
-      throw new AppError(
-        'Status denda yang sudah LUNAS tidak dapat dikembalikan menjadi BELUM_LUNAS',
-        409
-      );
+    const existing = await fineRepository.lockByIdForUpdate(idDenda, client);
+    if (!existing) {
+      throw new AppError('Catatan denda tidak ditemukan', 404);
     }
-    if (
-      validated.hari_terlambat !== existing.hari_terlambat ||
-      validated.tarif_per_hari !== Number(existing.tarif_per_hari) ||
-      validated.total_denda !== Number(existing.total_denda)
-    ) {
-      throw new AppError(
-        'Nominal denda yang sudah LUNAS tidak dapat diubah; hanya keterangan yang dapat diperbarui',
-        409
-      );
-    }
-  }
 
-  return fineRepository.update(idDenda, validated);
+    const validated = validateUpdateFine(rawBody, existing);
+
+    // Arsip pelunasan final: denda LUNAS tidak boleh dikembalikan ke BELUM_LUNAS atau diubah nominalnya
+    if (existing.status_denda === FINE_STATUS.LUNAS) {
+      if (validated.status_denda !== FINE_STATUS.LUNAS) {
+        throw new AppError(
+          'Status denda yang sudah LUNAS tidak dapat dikembalikan menjadi BELUM_LUNAS',
+          409
+        );
+      }
+      if (
+        validated.hari_terlambat !== existing.hari_terlambat ||
+        validated.tarif_per_hari !== Number(existing.tarif_per_hari) ||
+        validated.total_denda !== Number(existing.total_denda)
+      ) {
+        throw new AppError(
+          'Nominal denda yang sudah LUNAS tidak dapat diubah; hanya keterangan yang dapat diperbarui',
+          409
+        );
+      }
+    }
+
+    const updated = await fineRepository.update(idDenda, validated, client);
+    await client.query('COMMIT');
+    return updated;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 const payFine = async (idDenda, { tanggal_bayar, keterangan }) => {
-  const existing = await fineRepository.findById(idDenda);
-  if (!existing) {
-    throw new AppError('Catatan denda tidak ditemukan', 404);
-  }
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  // FR-43: Pelunasan tunai di perpustakaan (BELUM_LUNAS -> LUNAS)
-  if (existing.status_denda === FINE_STATUS.LUNAS) {
-    throw new AppError('Catatan denda ini sudah berstatus LUNAS', 400);
-  }
+    const existing = await fineRepository.lockByIdForUpdate(idDenda, client);
+    if (!existing) {
+      throw new AppError('Catatan denda tidak ditemukan', 404);
+    }
 
-  return fineRepository.update(idDenda, {
-    hari_terlambat: existing.hari_terlambat,
-    tarif_per_hari: Number(existing.tarif_per_hari),
-    total_denda: Number(existing.total_denda),
-    status_denda: FINE_STATUS.LUNAS,
-    tanggal_bayar: tanggal_bayar,
-    keterangan: keterangan !== null ? keterangan : existing.keterangan,
-  });
+    // FR-43: Pelunasan tunai di perpustakaan (BELUM_LUNAS -> LUNAS)
+    if (existing.status_denda === FINE_STATUS.LUNAS) {
+      throw new AppError('Catatan denda ini sudah berstatus LUNAS', 400);
+    }
+
+    const paid = await fineRepository.update(
+      idDenda,
+      {
+        hari_terlambat: existing.hari_terlambat,
+        tarif_per_hari: Number(existing.tarif_per_hari),
+        total_denda: Number(existing.total_denda),
+        status_denda: FINE_STATUS.LUNAS,
+        tanggal_bayar: tanggal_bayar,
+        keterangan: keterangan !== null ? keterangan : existing.keterangan,
+      },
+      client
+    );
+
+    await client.query('COMMIT');
+    return paid;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 const deleteFine = async (idDenda) => {
-  const existing = await fineRepository.findById(idDenda);
-  if (!existing) {
-    throw new AppError('Catatan denda tidak ditemukan', 404);
-  }
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  // FR-44: Catatan denda yang sudah LUNAS merupakan arsip pelunasan final dan tidak boleh dihapus
-  if (existing.status_denda === FINE_STATUS.LUNAS) {
-    throw new AppError(
-      'Catatan denda berstatus LUNAS tidak dapat dihapus karena merupakan arsip pelunasan final',
-      409
-    );
-  }
+    const existing = await fineRepository.lockByIdForUpdate(idDenda, client);
+    if (!existing) {
+      throw new AppError('Catatan denda tidak ditemukan', 404);
+    }
 
-  return fineRepository.remove(idDenda);
+    // FR-44: Catatan denda yang sudah LUNAS merupakan arsip pelunasan final dan tidak boleh dihapus
+    if (existing.status_denda === FINE_STATUS.LUNAS) {
+      throw new AppError(
+        'Catatan denda berstatus LUNAS tidak dapat dihapus karena merupakan arsip pelunasan final',
+        409
+      );
+    }
+
+    const deleted = await fineRepository.remove(idDenda, client);
+    await client.query('COMMIT');
+    return deleted;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 module.exports = {

@@ -29,7 +29,7 @@ const findAll = async ({ search } = {}) => {
   return result.rows;
 };
 
-const findById = async (idKategori) => {
+const findById = async (idKategori, client = db) => {
   const sql = `
     SELECT
       k.id_kategori,
@@ -44,7 +44,7 @@ const findById = async (idKategori) => {
     GROUP BY k.id_kategori
     LIMIT 1
   `;
-  const result = await db.query(sql, [idKategori]);
+  const result = await client.query(sql, [idKategori]);
   return result.rows[0] || null;
 };
 

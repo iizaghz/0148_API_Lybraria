@@ -83,7 +83,7 @@ const findAll = async ({
   return result.rows.map(normalizeFineRow);
 };
 
-const findById = async (idDenda) => {
+const findById = async (idDenda, client = db) => {
   const sql = `
     SELECT ${FINE_SELECT_FIELDS}
     FROM denda d
@@ -93,7 +93,26 @@ const findById = async (idDenda) => {
     WHERE d.id_denda = $1
     LIMIT 1
   `;
-  const result = await db.query(sql, [idDenda]);
+  const result = await client.query(sql, [idDenda]);
+  return normalizeFineRow(result.rows[0] || null);
+};
+
+const lockByIdForUpdate = async (idDenda, client) => {
+  const sql = `
+    SELECT
+      id_denda,
+      id_peminjaman,
+      hari_terlambat,
+      tarif_per_hari,
+      total_denda,
+      status_denda,
+      TO_CHAR(tanggal_bayar, 'YYYY-MM-DD') AS tanggal_bayar,
+      keterangan
+    FROM denda
+    WHERE id_denda = $1
+    FOR UPDATE
+  `;
+  const result = await client.query(sql, [idDenda]);
   return normalizeFineRow(result.rows[0] || null);
 };
 
@@ -144,7 +163,7 @@ const create = async (data) => {
   return findById(result.rows[0].id_denda);
 };
 
-const update = async (idDenda, data) => {
+const update = async (idDenda, data, client = db) => {
   const sql = `
     UPDATE denda
     SET
@@ -166,18 +185,18 @@ const update = async (idDenda, data) => {
     data.keterangan,
     idDenda,
   ];
-  const result = await db.query(sql, params);
+  const result = await client.query(sql, params);
   if (result.rows.length === 0) return null;
-  return findById(result.rows[0].id_denda);
+  return findById(result.rows[0].id_denda, client);
 };
 
-const remove = async (idDenda) => {
+const remove = async (idDenda, client = db) => {
   const sql = `
     DELETE FROM denda
     WHERE id_denda = $1
     RETURNING id_denda, id_peminjaman, total_denda, status_denda
   `;
-  const result = await db.query(sql, [idDenda]);
+  const result = await client.query(sql, [idDenda]);
   const row = result.rows[0];
   if (!row) return null;
   return {
@@ -189,6 +208,7 @@ const remove = async (idDenda) => {
 module.exports = {
   findAll,
   findById,
+  lockByIdForUpdate,
   findByLoanId,
   findLoanExists,
   create,

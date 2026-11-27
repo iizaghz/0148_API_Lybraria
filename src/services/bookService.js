@@ -58,7 +58,7 @@ const updateBook = async (idBuku, rawBody) => {
 
     const validated = validateUpdateBook(rawBody, existingBook);
 
-    const category = await categoryRepository.findById(validated.id_kategori);
+    const category = await categoryRepository.findById(validated.id_kategori, client);
     if (!category) {
       throw new AppError('Kategori buku tidak ditemukan', 404);
     }

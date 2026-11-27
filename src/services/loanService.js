@@ -14,6 +14,7 @@ const {
   FINE_STATUS,
   BUSINESS_RULES,
 } = require('../constants/enums');
+const { MAX_NUMERIC_10_2 } = require('../utils/validation');
 
 const generateLoanCode = (dateStr) => {
   const compactDate = dateStr.replace(/-/g, '');
@@ -316,8 +317,8 @@ const returnLoan = async (idPeminjaman, payload) => {
   const client = await db.pool.connect();
   try {
     await client.query('BEGIN');
-    await loanRepository.syncOverdueLoans(client);
 
+    // Lock langsung baris transaksi ini (tanpa table-wide UPDATE) untuk mencegah lock contention/deadlock
     const loan = await loanRepository.findRawForUpdate(idPeminjaman, client);
     if (!loan) {
       throw new AppError('Transaksi peminjaman tidak ditemukan', 404);
@@ -368,7 +369,13 @@ const returnLoan = async (idPeminjaman, payload) => {
         const alreadyHasFine = await loanRepository.hasAssociatedFine(idPeminjaman, client);
         if (!alreadyHasFine) {
           const tarifPerHari = BUSINESS_RULES.DEFAULT_FINE_PER_DAY;
-          const totalDenda = hariTerlambat * tarifPerHari;
+          const totalDenda = Number((hariTerlambat * tarifPerHari).toFixed(2));
+          if (totalDenda > MAX_NUMERIC_10_2) {
+            throw new AppError(
+              `Perhitungan denda (${totalDenda}) melebihi batas maksimal sistem (${MAX_NUMERIC_10_2}). Periksa kembali tanggal kembali.`,
+              400
+            );
+          }
 
           await loanRepository.createAutoFine(
             {
