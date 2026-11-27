@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../config/db');
 const authRoutes = require('./authRoutes');
 const categoryRoutes = require('./categoryRoutes');
+const bookRoutes = require('./bookRoutes');
 
 const router = express.Router();
 
@@ -24,5 +25,6 @@ router.get('/health', async (req, res, next) => {
 
 router.use('/auth', authRoutes);
 router.use('/categories', categoryRoutes);
+router.use('/books', bookRoutes);
 
 module.exports = router;
