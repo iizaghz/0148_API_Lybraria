@@ -21,9 +21,11 @@ const generateAccessToken = (user) => {
     role: user.role,
     email: user.email,
     nim: user.nim,
+    type: 'access',
   };
 
   return jwt.sign(payload, getAccessSecret(), {
+    algorithm: 'HS256',
     expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || '30m',
   });
 };
@@ -37,16 +39,17 @@ const generateRefreshToken = (user) => {
   };
 
   return jwt.sign(payload, getRefreshSecret(), {
+    algorithm: 'HS256',
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   });
 };
 
 const verifyAccessToken = (token) => {
-  return jwt.verify(token, getAccessSecret());
+  return jwt.verify(token, getAccessSecret(), { algorithms: ['HS256'] });
 };
 
 const verifyRefreshToken = (token) => {
-  return jwt.verify(token, getRefreshSecret());
+  return jwt.verify(token, getRefreshSecret(), { algorithms: ['HS256'] });
 };
 
 const hashToken = (token) => {

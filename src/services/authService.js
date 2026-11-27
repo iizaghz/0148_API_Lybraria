@@ -89,7 +89,15 @@ const refresh = async ({ refreshToken }) => {
   const newRefreshToken = generateRefreshToken(user);
   const newRefreshTokenHash = hashToken(newRefreshToken);
 
-  await authRepository.updateRefreshTokenHash(user.id_anggota, newRefreshTokenHash);
+  // Atomic Compare-And-Swap untuk mencegah race condition rotasi refresh token paralel
+  const rotated = await authRepository.rotateRefreshTokenHashAtomic(
+    user.id_anggota,
+    user.refresh_token_hash,
+    newRefreshTokenHash
+  );
+  if (!rotated) {
+    throw new AppError('Refresh token telah digunakan atau sesi sudah berakhir', 401);
+  }
 
   return {
     access_token: newAccessToken,

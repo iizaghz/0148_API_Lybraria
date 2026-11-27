@@ -57,8 +57,22 @@ const updateRefreshTokenHash = async (idAnggota, refreshTokenHash) => {
   return result.rows[0] || null;
 };
 
+const rotateRefreshTokenHashAtomic = async (idAnggota, expectedCurrentHash, newHash) => {
+  const sql = `
+    UPDATE anggota
+    SET refresh_token_hash = $1
+    WHERE id_anggota = $2
+      AND refresh_token_hash = $3
+      AND status_akun = 'AKTIF'
+    RETURNING id_anggota
+  `;
+  const result = await db.query(sql, [newHash, idAnggota, expectedCurrentHash]);
+  return result.rows[0] || null;
+};
+
 module.exports = {
   findByIdentifier,
   findById,
   updateRefreshTokenHash,
+  rotateRefreshTokenHashAtomic,
 };

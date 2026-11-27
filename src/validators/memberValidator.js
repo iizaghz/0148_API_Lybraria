@@ -4,6 +4,7 @@ const { parseStrictPositiveId } = require('../utils/validation');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 6;
+const MAX_PASSWORD_LENGTH = 72;
 
 const parseMemberId = (rawId) => parseStrictPositiveId(rawId, 'ID anggota');
 
@@ -72,6 +73,11 @@ const validateCreateMember = (body = {}) => {
       field: 'password',
       message: `Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter`,
     });
+  } else if (password.length > MAX_PASSWORD_LENGTH) {
+    errors.push({
+      field: 'password',
+      message: `Kata sandi maksimal ${MAX_PASSWORD_LENGTH} karakter`,
+    });
   }
 
   const programStudi = parseOptionalString(body.program_studi, 'program_studi', 100, errors);
@@ -135,6 +141,11 @@ const validateUpdateMember = (body = {}, existingMember) => {
       errors.push({
         field: 'password',
         message: `Kata sandi minimal ${MIN_PASSWORD_LENGTH} karakter`,
+      });
+    } else if (body.password.length > MAX_PASSWORD_LENGTH) {
+      errors.push({
+        field: 'password',
+        message: `Kata sandi maksimal ${MAX_PASSWORD_LENGTH} karakter`,
       });
     } else {
       password = body.password;

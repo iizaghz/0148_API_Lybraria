@@ -26,6 +26,10 @@ const authenticate = async (req, res, next) => {
       return next(new AppError('Token autentikasi tidak valid', 401));
     }
 
+    if (decoded.type !== 'access' || !decoded.id_anggota) {
+      return next(new AppError('Token autentikasi tidak valid', 401));
+    }
+
     const user = await authRepository.findById(decoded.id_anggota);
     if (!user) {
       return next(new AppError('Akun pengguna tidak ditemukan', 401));
