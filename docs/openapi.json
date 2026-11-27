@@ -1,0 +1,741 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Lybraria REST API",
+    "version": "0.1.0",
+    "description": "Dokumentasi lengkap REST API Backend Lybraria (Express.js + PostgreSQL) sesuai dokumen SRS Lybraria v0.1. Klik tombol **Authorize** lalu masukkan JWT Access Token (tanpa kata `Bearer`) untuk menguji endpoint yang terlindungi."
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000",
+      "description": "Local Development Server"
+    }
+  ],
+  "tags": [
+    { "name": "Health", "description": "Status server dan koneksi PostgreSQL" },
+    { "name": "Auth", "description": "Autentikasi & Pengelolaan Sesi JWT (FR-01 s/d FR-08)" },
+    { "name": "Dashboard", "description": "Ringkasan statistik perpustakaan khusus Admin (SRS 4.1)" },
+    { "name": "Categories", "description": "Pengelolaan Kategori Buku CRUDS (FR-16 s/d FR-21)" },
+    { "name": "Books", "description": "Pengelolaan Koleksi Buku CRUDS (FR-09 s/d FR-14)" },
+    { "name": "Members", "description": "Pengelolaan Anggota Mahasiswa CRUDS (FR-22 s/d FR-28)" },
+    { "name": "Loans", "description": "Pengelolaan Peminjaman & Pengembalian CRUDS (FR-29 s/d FR-39)" },
+    { "name": "Fines", "description": "Pengelolaan Denda Keterlambatan CRUDS (FR-40 s/d FR-46)" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "success": { "type": "boolean", "example": false },
+          "message": { "type": "string", "example": "Validasi gagal" },
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": { "type": "string" },
+                "message": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "required": ["identifier", "password"],
+        "properties": {
+          "identifier": { "type": "string", "example": "admin@lybraria.ac.id", "description": "Email atau NIM terdaftar" },
+          "password": { "type": "string", "example": "Admin123!" }
+        }
+      },
+      "RefreshRequest": {
+        "type": "object",
+        "required": ["refresh_token"],
+        "properties": {
+          "refresh_token": { "type": "string" }
+        }
+      },
+      "CategoryRequest": {
+        "type": "object",
+        "required": ["nama_kategori"],
+        "properties": {
+          "nama_kategori": { "type": "string", "maxLength": 100, "example": "Teknologi Informasi" },
+          "deskripsi": { "type": "string", "nullable": true, "example": "Buku pemrograman, jaringan, dan basis data." }
+        }
+      },
+      "BookCreateRequest": {
+        "type": "object",
+        "required": ["id_kategori", "kode_buku", "judul", "penulis", "penerbit", "tahun_terbit", "stok_total"],
+        "properties": {
+          "id_kategori": { "type": "integer", "example": 1 },
+          "kode_buku": { "type": "string", "maxLength": 30, "example": "BK-TI-010" },
+          "isbn": { "type": "string", "maxLength": 20, "nullable": true, "example": "978-6020000010" },
+          "judul": { "type": "string", "maxLength": 200, "example": "Pemrograman Android dengan Jetpack Compose" },
+          "penulis": { "type": "string", "maxLength": 150, "example": "Budi Santoso" },
+          "penerbit": { "type": "string", "maxLength": 150, "example": "Lybraria Press" },
+          "tahun_terbit": { "type": "integer", "example": 2026 },
+          "stok_total": { "type": "integer", "minimum": 0, "example": 5 },
+          "stok_tersedia": { "type": "integer", "minimum": 0, "description": "Opsional, default sama dengan stok_total" },
+          "lokasi_rak": { "type": "string", "maxLength": 50, "nullable": true, "example": "RAK-A1" },
+          "deskripsi": { "type": "string", "nullable": true, "example": "Panduan pengembangan aplikasi mobile Android." }
+        }
+      },
+      "MemberCreateRequest": {
+        "type": "object",
+        "required": ["nim", "nama_lengkap", "email", "password"],
+        "properties": {
+          "nim": { "type": "string", "maxLength": 20, "example": "2300018149" },
+          "nama_lengkap": { "type": "string", "maxLength": 150, "example": "Andi Pratama" },
+          "email": { "type": "string", "format": "email", "example": "andi@lybraria.ac.id" },
+          "password": { "type": "string", "minLength": 6, "example": "Anggota123!" },
+          "program_studi": { "type": "string", "maxLength": 100, "nullable": true, "example": "Informatika" },
+          "no_telepon": { "type": "string", "maxLength": 20, "nullable": true, "example": "081234567890" }
+        }
+      },
+      "MemberUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "nim": { "type": "string", "example": "2300018149" },
+          "nama_lengkap": { "type": "string", "example": "Andi Pratama" },
+          "email": { "type": "string", "format": "email", "example": "andi@lybraria.ac.id" },
+          "password": { "type": "string", "minLength": 6, "description": "Opsional untuk reset kata sandi" },
+          "program_studi": { "type": "string", "nullable": true, "example": "Sistem Informasi" },
+          "no_telepon": { "type": "string", "nullable": true, "example": "081234567890" },
+          "status_akun": { "type": "string", "enum": ["AKTIF", "NONAKTIF"], "example": "AKTIF" }
+        }
+      },
+      "LoanCreateRequest": {
+        "type": "object",
+        "required": ["id_buku"],
+        "properties": {
+          "id_anggota": { "type": "integer", "description": "Wajib diisi jika login sebagai ADMIN (FR-30); diabaikan jika ANGGOTA (FR-29)", "example": 2 },
+          "id_buku": { "type": "integer", "example": 1 },
+          "jumlah": { "type": "integer", "minimum": 1, "default": 1, "example": 1 },
+          "tanggal_pinjam": { "type": "string", "format": "date", "description": "Opsional khusus ADMIN (default hari ini)", "example": "2026-11-27" },
+          "tanggal_jatuh_tempo": { "type": "string", "format": "date", "description": "Opsional khusus ADMIN (default +7 hari)", "example": "2026-12-04" },
+          "catatan": { "type": "string", "nullable": true, "example": "Untuk referensi tugas akhir" }
+        }
+      },
+      "LoanApproveRequest": {
+        "type": "object",
+        "properties": {
+          "tanggal_pinjam": { "type": "string", "format": "date", "example": "2026-11-27" },
+          "tanggal_jatuh_tempo": { "type": "string", "format": "date", "example": "2026-12-04" },
+          "catatan": { "type": "string", "nullable": true, "example": "Disetujui, silakan ambil di loket" }
+        }
+      },
+      "LoanReturnRequest": {
+        "type": "object",
+        "properties": {
+          "tanggal_kembali": { "type": "string", "format": "date", "description": "Default hari ini; harus >= tanggal_pinjam", "example": "2026-12-04" },
+          "catatan": { "type": "string", "nullable": true, "example": "Buku kembali dalam kondisi baik" }
+        }
+      },
+      "FineCreateRequest": {
+        "type": "object",
+        "required": ["id_peminjaman", "hari_terlambat"],
+        "properties": {
+          "id_peminjaman": { "type": "integer", "example": 1 },
+          "hari_terlambat": { "type": "integer", "minimum": 0, "example": 3 },
+          "tarif_per_hari": { "type": "number", "minimum": 0, "default": 1000, "example": 1000 },
+          "total_denda": { "type": "number", "minimum": 0, "description": "Opsional, otomatis hari_terlambat * tarif_per_hari" },
+          "keterangan": { "type": "string", "nullable": true, "example": "Catatan denda korektif" }
+        }
+      },
+      "FinePayRequest": {
+        "type": "object",
+        "properties": {
+          "tanggal_bayar": { "type": "string", "format": "date", "description": "Default hari ini", "example": "2026-11-27" },
+          "keterangan": { "type": "string", "nullable": true, "example": "Dibayar tunai di loket perpustakaan" }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/api/health": {
+      "get": {
+        "tags": ["Health"],
+        "summary": "Cek kesehatan server & koneksi PostgreSQL",
+        "responses": {
+          "200": { "description": "Server & database terhubung" }
+        }
+      }
+    },
+    "/api/dashboard/summary": {
+      "get": {
+        "tags": ["Dashboard"],
+        "summary": "Ringkasan statistik perpustakaan (Khusus Admin)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Statistik buku, kategori, anggota, peminjaman, dan denda" },
+          "401": { "description": "Unauthorized" },
+          "403": { "description": "Forbidden (hanya ADMIN)" }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Login Admin atau Anggota (FR-01 s/d FR-05)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoginRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Login berhasil, mengembalikan access_token, refresh_token, dan data user" },
+          "400": { "description": "Validasi input gagal" },
+          "401": { "description": "Email/NIM atau kata sandi salah" },
+          "403": { "description": "Akun berstatus NONAKTIF" }
+        }
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Perbarui Access Token & rotasi Refresh Token (FR-06)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RefreshRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Token baru diterbitkan" },
+          "401": { "description": "Refresh token tidak valid, kedaluwarsa, atau telah direvokasi" }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Ambil profil pengguna yang sedang login",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Profil pengguna tanpa password_hash / refresh_token_hash" },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Logout & revokasi Refresh Token di server (FR-08)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Logout berhasil" },
+          "401": { "description": "Unauthorized" }
+        }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": ["Categories"],
+        "summary": "Daftar & pencarian kategori buku (FR-17, FR-20)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Cari berdasarkan nama_kategori atau deskripsi" }
+        ],
+        "responses": {
+          "200": { "description": "Daftar kategori beserta jumlah_buku aktif" }
+        }
+      },
+      "post": {
+        "tags": ["Categories"],
+        "summary": "Tambah kategori baru (Khusus Admin — FR-16, FR-21)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Kategori berhasil ditambahkan" },
+          "400": { "description": "Validasi gagal" },
+          "403": { "description": "Forbidden (hanya ADMIN)" },
+          "409": { "description": "Nama kategori sudah terdaftar" }
+        }
+      }
+    },
+    "/api/categories/{id}": {
+      "get": {
+        "tags": ["Categories"],
+        "summary": "Detail kategori buku",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Detail kategori" },
+          "404": { "description": "Kategori tidak ditemukan" }
+        }
+      },
+      "put": {
+        "tags": ["Categories"],
+        "summary": "Perbarui kategori (Khusus Admin — FR-18, FR-21)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CategoryRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Kategori berhasil diperbarui" },
+          "403": { "description": "Forbidden" },
+          "404": { "description": "Kategori tidak ditemukan" },
+          "409": { "description": "Nama kategori duplikat" }
+        }
+      },
+      "delete": {
+        "tags": ["Categories"],
+        "summary": "Hapus kategori (Khusus Admin — FR-19, FR-21)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Kategori berhasil dihapus" },
+          "403": { "description": "Forbidden" },
+          "409": { "description": "Ditolak karena masih direferensikan oleh data buku (RESTRICT)" }
+        }
+      }
+    },
+    "/api/books": {
+      "get": {
+        "tags": ["Books"],
+        "summary": "Katalog, pencarian, dan filter buku (FR-11, FR-14)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Cari judul, penulis, kode_buku, atau ISBN" },
+          { "name": "id_kategori", "in": "query", "schema": { "type": "integer" }, "description": "Filter berdasarkan ID kategori" },
+          { "name": "available_only", "in": "query", "schema": { "type": "boolean" }, "description": "Tampilkan hanya buku dengan stok_tersedia > 0" },
+          { "name": "include_inactive", "in": "query", "schema": { "type": "boolean" }, "description": "Khusus Admin: sertakan buku soft-deleted" }
+        ],
+        "responses": {
+          "200": { "description": "Daftar buku beserta nama_kategori dan stok" }
+        }
+      },
+      "post": {
+        "tags": ["Books"],
+        "summary": "Tambah buku baru (Khusus Admin — FR-09, FR-10)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookCreateRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Buku berhasil ditambahkan" },
+          "400": { "description": "Validasi kolom/stok gagal" },
+          "403": { "description": "Forbidden" },
+          "409": { "description": "Duplikasi kode_buku atau ISBN" }
+        }
+      }
+    },
+    "/api/books/{id}": {
+      "get": {
+        "tags": ["Books"],
+        "summary": "Detail buku (FR-11)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Detail buku" },
+          "404": { "description": "Buku tidak ditemukan" }
+        }
+      },
+      "put": {
+        "tags": ["Books"],
+        "summary": "Perbarui data & stok buku (Khusus Admin — FR-10, FR-12)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookCreateRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Data buku diperbarui" },
+          "400": { "description": "Stok tidak valid atau lebih kecil dari jumlah sedang dipinjam" },
+          "409": { "description": "Duplikasi kode_buku atau ISBN" }
+        }
+      },
+      "patch": {
+        "tags": ["Books"],
+        "summary": "Perbarui sebagian data/stok buku (Khusus Admin — FR-12)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/BookCreateRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Data buku diperbarui" }
+        }
+      },
+      "delete": {
+        "tags": ["Books"],
+        "summary": "Soft-delete buku (is_active = FALSE) (Khusus Admin — FR-13)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Buku dinonaktifkan tanpa menghapus riwayat peminjaman" },
+          "409": { "description": "Ditolak karena buku masih memiliki peminjaman aktif" }
+        }
+      }
+    },
+    "/api/members/me": {
+      "get": {
+        "tags": ["Members"],
+        "summary": "Profil keanggotaan pribadi & ringkasan tanggungan (Anggota & Admin)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Profil pribadi beserta jumlah_peminjaman_aktif & jumlah_denda_belum_lunas" }
+        }
+      }
+    },
+    "/api/members": {
+      "get": {
+        "tags": ["Members"],
+        "summary": "Daftar & pencarian anggota mahasiswa (Khusus Admin — FR-23, FR-26)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Cari berdasarkan NIM, nama_lengkap, email, atau program_studi" },
+          { "name": "status_akun", "in": "query", "schema": { "type": "string", "enum": ["AKTIF", "NONAKTIF"] } }
+        ],
+        "responses": {
+          "200": { "description": "Daftar anggota tanpa data sensitif (FR-27)" },
+          "403": { "description": "Forbidden (hanya ADMIN)" }
+        }
+      },
+      "post": {
+        "tags": ["Members"],
+        "summary": "Daftarkan anggota mahasiswa baru (Khusus Admin — FR-22)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemberCreateRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Anggota baru berhasil didaftarkan" },
+          "400": { "description": "Validasi input gagal" },
+          "409": { "description": "NIM atau email sudah terdaftar" }
+        }
+      }
+    },
+    "/api/members/{id}": {
+      "get": {
+        "tags": ["Members"],
+        "summary": "Detail anggota (Khusus Admin — FR-23, FR-27)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Detail anggota" },
+          "404": { "description": "Anggota tidak ditemukan" }
+        }
+      },
+      "put": {
+        "tags": ["Members"],
+        "summary": "Perbarui profil & status akun anggota (Khusus Admin — FR-24, FR-28)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemberUpdateRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Data anggota diperbarui" },
+          "400": { "description": "Validasi gagal atau percobaan menonaktifkan akun Admin sendiri" }
+        }
+      },
+      "patch": {
+        "tags": ["Members"],
+        "summary": "Perbarui sebagian profil/status anggota (Khusus Admin — FR-24, FR-28)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MemberUpdateRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Data anggota diperbarui" }
+        }
+      },
+      "delete": {
+        "tags": ["Members"],
+        "summary": "Soft-delete / nonaktifkan akun anggota (Khusus Admin — FR-25, FR-28)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Akun dinonaktifkan (status_akun = NONAKTIF)" },
+          "400": { "description": "Admin tidak dapat menghapus akun sendiri" },
+          "409": { "description": "Ditolak karena masih memiliki peminjaman aktif atau denda BELUM_LUNAS" }
+        }
+      }
+    },
+    "/api/loans": {
+      "get": {
+        "tags": ["Loans"],
+        "summary": "Daftar & pencarian transaksi peminjaman (FR-32, FR-37, FR-39)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Cari kode_peminjaman, judul buku, atau NIM/nama (Admin)" },
+          {
+            "name": "status_peminjaman",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["DIAJUKAN", "DIPINJAM", "DIKEMBALIKAN", "TERLAMBAT", "DITOLAK", "DIBATALKAN"] }
+          },
+          { "name": "id_anggota", "in": "query", "schema": { "type": "integer" }, "description": "Filter anggota (khusus Admin)" },
+          { "name": "id_buku", "in": "query", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Daftar peminjaman (Admin: semua; Anggota: pribadi)" }
+        }
+      },
+      "post": {
+        "tags": ["Loans"],
+        "summary": "Ajukan peminjaman (Anggota: DIAJUKAN) atau Catat langsung (Admin: DIPINJAM) (FR-29, FR-30, FR-31)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoanCreateRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Transaksi peminjaman berhasil dibuat" },
+          "400": { "description": "Stok tidak mencukupi atau validasi gagal" }
+        }
+      }
+    },
+    "/api/loans/{id}": {
+      "get": {
+        "tags": ["Loans"],
+        "summary": "Detail transaksi peminjaman (FR-32)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Detail peminjaman beserta info denda jika ada" },
+          "403": { "description": "Anggota tidak boleh melihat transaksi anggota lain" },
+          "404": { "description": "Transaksi tidak ditemukan" }
+        }
+      },
+      "delete": {
+        "tags": ["Loans"],
+        "summary": "Hapus catatan peminjaman DITOLAK/DIBATALKAN tanpa denda (Khusus Admin — FR-38)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Catatan peminjaman berhasil dihapus" },
+          "409": { "description": "Ditolak jika transaksi aktif atau memiliki denda" }
+        }
+      }
+    },
+    "/api/loans/{id}/approve": {
+      "patch": {
+        "tags": ["Loans"],
+        "summary": "Setujui pengajuan peminjaman DIAJUKAN -> DIPINJAM (Khusus Admin — FR-33, NFR-06)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoanApproveRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Disetujui & stok dikurangi secara atomik" },
+          "400": { "description": "Status bukan DIAJUKAN atau stok tidak cukup" }
+        }
+      }
+    },
+    "/api/loans/{id}/reject": {
+      "patch": {
+        "tags": ["Loans"],
+        "summary": "Tolak pengajuan peminjaman DIAJUKAN -> DITOLAK (Khusus Admin — FR-33)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "catatan": { "type": "string", "example": "Buku sedang diperbaiki" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Pengajuan ditolak, stok tidak berubah" }
+        }
+      }
+    },
+    "/api/loans/{id}/cancel": {
+      "patch": {
+        "tags": ["Loans"],
+        "summary": "Batalkan pengajuan sendiri DIAJUKAN -> DIBATALKAN (Khusus Anggota pemilik — FR-34)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": { "catatan": { "type": "string", "example": "Batal meminjam" } }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Pengajuan dibatalkan" },
+          "400": { "description": "Status bukan DIAJUKAN" },
+          "403": { "description": "Bukan pemilik pengajuan" }
+        }
+      }
+    },
+    "/api/loans/{id}/return": {
+      "patch": {
+        "tags": ["Loans"],
+        "summary": "Proses pengembalian buku DIPINJAM/TERLAMBAT -> DIKEMBALIKAN + auto-denda (Khusus Admin — FR-35, FR-36, FR-37, FR-40)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LoanReturnRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Pengembalian selesai, stok dipulihkan atomik, dan denda dibuat otomatis jika terlambat" },
+          "400": { "description": "Status tidak valid atau tanggal_kembali < tanggal_pinjam" }
+        }
+      }
+    },
+    "/api/fines": {
+      "get": {
+        "tags": ["Fines"],
+        "summary": "Daftar & pencarian denda keterlambatan (FR-42, FR-45)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Cari kode_peminjaman, judul buku, atau NIM/nama (Admin)" },
+          { "name": "status_denda", "in": "query", "schema": { "type": "string", "enum": ["BELUM_LUNAS", "LUNAS"] } }
+        ],
+        "responses": {
+          "200": { "description": "Daftar denda (Admin: semua; Anggota: pribadi)" }
+        }
+      },
+      "post": {
+        "tags": ["Fines"],
+        "summary": "Buat catatan denda korektif (Khusus Admin — FR-40, FR-41)",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FineCreateRequest" } } }
+        },
+        "responses": {
+          "201": { "description": "Catatan denda berhasil ditambahkan" },
+          "400": { "description": "Nilai negatif ditolak" },
+          "409": { "description": "Peminjaman sudah memiliki catatan denda" }
+        }
+      }
+    },
+    "/api/fines/{id}": {
+      "get": {
+        "tags": ["Fines"],
+        "summary": "Detail catatan denda (FR-42)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Detail denda" },
+          "403": { "description": "Anggota tidak boleh melihat denda anggota lain" },
+          "404": { "description": "Denda tidak ditemukan" }
+        }
+      },
+      "put": {
+        "tags": ["Fines"],
+        "summary": "Koreksi catatan denda (Khusus Admin — FR-41, FR-43)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FineCreateRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Catatan denda diperbarui" },
+          "400": { "description": "Nilai negatif ditolak" }
+        }
+      },
+      "patch": {
+        "tags": ["Fines"],
+        "summary": "Koreksi sebagian catatan denda (Khusus Admin — FR-41, FR-43)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FineCreateRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Catatan denda diperbarui" }
+        }
+      },
+      "delete": {
+        "tags": ["Fines"],
+        "summary": "Hapus denda korektif BELUM_LUNAS (Khusus Admin — FR-44)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Catatan denda korektif dihapus" },
+          "409": { "description": "Ditolak jika status denda sudah LUNAS" }
+        }
+      }
+    },
+    "/api/fines/{id}/pay": {
+      "patch": {
+        "tags": ["Fines"],
+        "summary": "Catat pelunasan denda tunai BELUM_LUNAS -> LUNAS (Khusus Admin — FR-43, FR-46)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "requestBody": {
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/FinePayRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Pelunasan tunai berhasil dicatat" },
+          "400": { "description": "Denda sudah berstatus LUNAS" },
+          "403": { "description": "Forbidden (hanya ADMIN)" }
+        }
+      }
+    }
+  }
+}
