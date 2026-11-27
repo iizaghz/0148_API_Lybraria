@@ -5,6 +5,8 @@ const categoryRoutes = require('./categoryRoutes');
 const bookRoutes = require('./bookRoutes');
 const memberRoutes = require('./memberRoutes');
 const loanRoutes = require('./loanRoutes');
+const fineRoutes = require('./fineRoutes');
+const dashboardRoutes = require('./dashboardRoutes');
 
 const router = express.Router();
 
@@ -30,5 +32,7 @@ router.use('/categories', categoryRoutes);
 router.use('/books', bookRoutes);
 router.use('/members', memberRoutes);
 router.use('/loans', loanRoutes);
+router.use('/fines', fineRoutes);
+router.use('/dashboard', dashboardRoutes);
 
 module.exports = router;
