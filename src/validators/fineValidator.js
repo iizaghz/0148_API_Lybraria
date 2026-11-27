@@ -1,6 +1,12 @@
 const AppError = require('../utils/AppError');
 const { FINE_STATUS, BUSINESS_RULES } = require('../constants/enums');
 const { getTodayDateString } = require('./loanValidator');
+const {
+  MAX_NUMERIC_10_2,
+  parseStrictInt,
+  parseStrictNumber,
+  parseStrictPositiveId,
+} = require('../utils/validation');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -15,13 +21,7 @@ const isValidDateString = (dateStr) => {
   );
 };
 
-const parseFineId = (rawId) => {
-  const id = Number(rawId);
-  if (!Number.isInteger(id) || id <= 0) {
-    throw new AppError('ID denda tidak valid', 400);
-  }
-  return id;
-};
+const parseFineId = (rawId) => parseStrictPositiveId(rawId, 'ID denda');
 
 const parseFineQuery = (query = {}) => {
   const rawSearch = query.q ?? query.search ?? '';
@@ -53,21 +53,21 @@ const parseOptionalKeterangan = (value, errors) => {
 const validateCreateFine = (body = {}) => {
   const errors = [];
 
-  const idPeminjaman = Number(body.id_peminjaman);
+  const idPeminjaman = parseStrictInt(body.id_peminjaman);
   if (body.id_peminjaman === undefined || body.id_peminjaman === null || body.id_peminjaman === '') {
     errors.push({ field: 'id_peminjaman', message: 'ID peminjaman wajib diisi' });
-  } else if (!Number.isInteger(idPeminjaman) || idPeminjaman <= 0) {
+  } else if (idPeminjaman === null || idPeminjaman <= 0) {
     errors.push({ field: 'id_peminjaman', message: 'ID peminjaman tidak valid' });
   }
 
-  const hariTerlambat = Number(body.hari_terlambat);
+  const hariTerlambat = parseStrictInt(body.hari_terlambat);
   if (
     body.hari_terlambat === undefined ||
     body.hari_terlambat === null ||
     body.hari_terlambat === ''
   ) {
     errors.push({ field: 'hari_terlambat', message: 'Jumlah hari terlambat wajib diisi' });
-  } else if (!Number.isInteger(hariTerlambat) || hariTerlambat < 0) {
+  } else if (hariTerlambat === null || hariTerlambat < 0) {
     errors.push({
       field: 'hari_terlambat',
       message: 'Jumlah hari terlambat harus berupa bilangan bulat >= 0',
@@ -80,20 +80,37 @@ const validateCreateFine = (body = {}) => {
     body.tarif_per_hari !== null &&
     body.tarif_per_hari !== ''
   ) {
-    tarifPerHari = Number(body.tarif_per_hari);
-    if (!Number.isFinite(tarifPerHari) || tarifPerHari < 0) {
-      errors.push({ field: 'tarif_per_hari', message: 'Tarif per hari harus berupa angka >= 0' });
+    tarifPerHari = parseStrictNumber(body.tarif_per_hari);
+    if (tarifPerHari === null || tarifPerHari < 0 || tarifPerHari > MAX_NUMERIC_10_2) {
+      errors.push({
+        field: 'tarif_per_hari',
+        message: `Tarif per hari harus berupa angka antara 0 dan ${MAX_NUMERIC_10_2}`,
+      });
     }
   }
 
-  let totalDenda;
+  let totalDenda = null;
   if (body.total_denda !== undefined && body.total_denda !== null && body.total_denda !== '') {
-    totalDenda = Number(body.total_denda);
-    if (!Number.isFinite(totalDenda) || totalDenda < 0) {
-      errors.push({ field: 'total_denda', message: 'Total denda harus berupa angka >= 0' });
+    totalDenda = parseStrictNumber(body.total_denda);
+    if (totalDenda === null || totalDenda < 0 || totalDenda > MAX_NUMERIC_10_2) {
+      errors.push({
+        field: 'total_denda',
+        message: `Total denda harus berupa angka antara 0 dan ${MAX_NUMERIC_10_2}`,
+      });
     }
-  } else if (Number.isInteger(hariTerlambat) && hariTerlambat >= 0 && Number.isFinite(tarifPerHari) && tarifPerHari >= 0) {
+  } else if (
+    hariTerlambat !== null &&
+    hariTerlambat >= 0 &&
+    tarifPerHari !== null &&
+    tarifPerHari >= 0
+  ) {
     totalDenda = Number((hariTerlambat * tarifPerHari).toFixed(2));
+    if (totalDenda > MAX_NUMERIC_10_2) {
+      errors.push({
+        field: 'total_denda',
+        message: `Hasil perhitungan total denda melebihi batas maksimal (${MAX_NUMERIC_10_2})`,
+      });
+    }
   }
 
   const keterangan = parseOptionalKeterangan(body.keterangan, errors);
@@ -118,8 +135,8 @@ const validateUpdateFine = (body = {}, existingFine) => {
 
   let hariTerlambat = existingFine.hari_terlambat;
   if (hasField('hari_terlambat')) {
-    hariTerlambat = Number(body.hari_terlambat);
-    if (!Number.isInteger(hariTerlambat) || hariTerlambat < 0) {
+    hariTerlambat = parseStrictInt(body.hari_terlambat);
+    if (hariTerlambat === null || hariTerlambat < 0) {
       errors.push({
         field: 'hari_terlambat',
         message: 'Jumlah hari terlambat harus berupa bilangan bulat >= 0',
@@ -129,26 +146,38 @@ const validateUpdateFine = (body = {}, existingFine) => {
 
   let tarifPerHari = Number(existingFine.tarif_per_hari);
   if (hasField('tarif_per_hari')) {
-    tarifPerHari = Number(body.tarif_per_hari);
-    if (!Number.isFinite(tarifPerHari) || tarifPerHari < 0) {
-      errors.push({ field: 'tarif_per_hari', message: 'Tarif per hari harus berupa angka >= 0' });
+    tarifPerHari = parseStrictNumber(body.tarif_per_hari);
+    if (tarifPerHari === null || tarifPerHari < 0 || tarifPerHari > MAX_NUMERIC_10_2) {
+      errors.push({
+        field: 'tarif_per_hari',
+        message: `Tarif per hari harus berupa angka antara 0 dan ${MAX_NUMERIC_10_2}`,
+      });
     }
   }
 
   let totalDenda = Number(existingFine.total_denda);
   if (hasField('total_denda')) {
-    totalDenda = Number(body.total_denda);
-    if (!Number.isFinite(totalDenda) || totalDenda < 0) {
-      errors.push({ field: 'total_denda', message: 'Total denda harus berupa angka >= 0' });
+    totalDenda = parseStrictNumber(body.total_denda);
+    if (totalDenda === null || totalDenda < 0 || totalDenda > MAX_NUMERIC_10_2) {
+      errors.push({
+        field: 'total_denda',
+        message: `Total denda harus berupa angka antara 0 dan ${MAX_NUMERIC_10_2}`,
+      });
     }
   } else if (
     (hasField('hari_terlambat') || hasField('tarif_per_hari')) &&
-    Number.isInteger(hariTerlambat) &&
+    hariTerlambat !== null &&
     hariTerlambat >= 0 &&
-    Number.isFinite(tarifPerHari) &&
+    tarifPerHari !== null &&
     tarifPerHari >= 0
   ) {
     totalDenda = Number((hariTerlambat * tarifPerHari).toFixed(2));
+    if (totalDenda > MAX_NUMERIC_10_2) {
+      errors.push({
+        field: 'total_denda',
+        message: `Hasil perhitungan total denda melebihi batas maksimal (${MAX_NUMERIC_10_2})`,
+      });
+    }
   }
 
   let statusDenda = existingFine.status_denda;

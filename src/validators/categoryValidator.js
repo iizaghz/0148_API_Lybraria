@@ -1,12 +1,7 @@
 const AppError = require('../utils/AppError');
+const { parseStrictPositiveId } = require('../utils/validation');
 
-const parseCategoryId = (rawId) => {
-  const id = Number(rawId);
-  if (!Number.isInteger(id) || id <= 0) {
-    throw new AppError('ID kategori tidak valid', 400);
-  }
-  return id;
-};
+const parseCategoryId = (rawId) => parseStrictPositiveId(rawId, 'ID kategori');
 
 const validateCategoryPayload = (body = {}) => {
   const errors = [];

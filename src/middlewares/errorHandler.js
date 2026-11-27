@@ -23,9 +23,9 @@ const errorHandler = (err, req, res, next) => {
   } else if (err.code === '23503') {
     statusCode = 409;
     message = 'Operasi ditolak karena data masih berelasi dengan data lain';
-  } else if (err.code === '22P02') {
+  } else if (err.code === '22P02' || err.code === '22003' || err.code === '22001') {
     statusCode = 400;
-    message = 'Format parameter atau tipe data tidak valid';
+    message = 'Format parameter, panjang teks, atau rentang nilai tidak valid';
   } else if (err.code === '23514') {
     statusCode = 400;
     message = 'Data melanggar aturan validasi basis data';

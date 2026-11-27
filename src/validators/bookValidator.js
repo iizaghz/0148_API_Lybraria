@@ -1,12 +1,7 @@
 const AppError = require('../utils/AppError');
+const { parseStrictInt, parseStrictPositiveId } = require('../utils/validation');
 
-const parseBookId = (rawId) => {
-  const id = Number(rawId);
-  if (!Number.isInteger(id) || id <= 0) {
-    throw new AppError('ID buku tidak valid', 400);
-  }
-  return id;
-};
+const parseBookId = (rawId) => parseStrictPositiveId(rawId, 'ID buku');
 
 const parseBookQuery = (query = {}) => {
   const rawSearch = query.q ?? query.search ?? '';
@@ -15,11 +10,7 @@ const parseBookQuery = (query = {}) => {
   let idKategori = null;
   const rawCategory = query.id_kategori ?? query.category_id;
   if (rawCategory !== undefined && rawCategory !== '') {
-    const parsed = Number(rawCategory);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      throw new AppError('Parameter id_kategori tidak valid', 400);
-    }
-    idKategori = parsed;
+    idKategori = parseStrictPositiveId(rawCategory, 'Parameter id_kategori');
   }
 
   const includeInactive = query.include_inactive === 'true';
@@ -72,37 +63,37 @@ const validateCreateBook = (body = {}) => {
   const lokasiRak = parseOptionalString(body.lokasi_rak, 'lokasi_rak', 50, errors);
   const deskripsi = parseOptionalString(body.deskripsi, 'deskripsi', null, errors);
 
-  const idKategori = Number(body.id_kategori);
+  const idKategori = parseStrictInt(body.id_kategori);
   if (body.id_kategori === undefined || body.id_kategori === null || body.id_kategori === '') {
     errors.push({ field: 'id_kategori', message: 'Kategori wajib dipilih' });
-  } else if (!Number.isInteger(idKategori) || idKategori <= 0) {
+  } else if (idKategori === null || idKategori <= 0) {
     errors.push({ field: 'id_kategori', message: 'ID kategori tidak valid' });
   }
 
-  const tahunTerbit = Number(body.tahun_terbit);
+  const tahunTerbit = parseStrictInt(body.tahun_terbit);
   if (body.tahun_terbit === undefined || body.tahun_terbit === null || body.tahun_terbit === '') {
     errors.push({ field: 'tahun_terbit', message: 'Tahun terbit wajib diisi' });
-  } else if (!Number.isInteger(tahunTerbit) || tahunTerbit < 1000 || tahunTerbit > 9999) {
+  } else if (tahunTerbit === null || tahunTerbit < 1000 || tahunTerbit > 9999) {
     errors.push({ field: 'tahun_terbit', message: 'Tahun terbit harus berupa angka 4 digit' });
   }
 
-  const stokTotal = Number(body.stok_total);
+  const stokTotal = parseStrictInt(body.stok_total);
   if (body.stok_total === undefined || body.stok_total === null || body.stok_total === '') {
     errors.push({ field: 'stok_total', message: 'Stok total wajib diisi' });
-  } else if (!Number.isInteger(stokTotal) || stokTotal < 0) {
+  } else if (stokTotal === null || stokTotal < 0) {
     errors.push({ field: 'stok_total', message: 'Stok total harus berupa bilangan bulat >= 0' });
   }
 
   // FR-09 Stimulus 1 & FR-10: default stok_tersedia = stok_total; jika dikirim manual tetap divalidasi
   let stokTersedia = stokTotal;
   if (body.stok_tersedia !== undefined && body.stok_tersedia !== null && body.stok_tersedia !== '') {
-    stokTersedia = Number(body.stok_tersedia);
-    if (!Number.isInteger(stokTersedia) || stokTersedia < 0) {
+    stokTersedia = parseStrictInt(body.stok_tersedia);
+    if (stokTersedia === null || stokTersedia < 0) {
       errors.push({
         field: 'stok_tersedia',
         message: 'Stok tersedia harus berupa bilangan bulat >= 0',
       });
-    } else if (Number.isInteger(stokTotal) && stokTotal >= 0 && stokTersedia > stokTotal) {
+    } else if (stokTotal !== null && stokTotal >= 0 && stokTersedia > stokTotal) {
       errors.push({
         field: 'stok_tersedia',
         message: 'Stok tersedia tidak boleh melebihi stok total',
@@ -164,24 +155,24 @@ const validateUpdateBook = (body = {}, existingBook) => {
 
   let idKategori = existingBook.id_kategori;
   if (hasField('id_kategori')) {
-    idKategori = Number(body.id_kategori);
-    if (!Number.isInteger(idKategori) || idKategori <= 0) {
+    idKategori = parseStrictInt(body.id_kategori);
+    if (idKategori === null || idKategori <= 0) {
       errors.push({ field: 'id_kategori', message: 'ID kategori tidak valid' });
     }
   }
 
   let tahunTerbit = existingBook.tahun_terbit;
   if (hasField('tahun_terbit')) {
-    tahunTerbit = Number(body.tahun_terbit);
-    if (!Number.isInteger(tahunTerbit) || tahunTerbit < 1000 || tahunTerbit > 9999) {
+    tahunTerbit = parseStrictInt(body.tahun_terbit);
+    if (tahunTerbit === null || tahunTerbit < 1000 || tahunTerbit > 9999) {
       errors.push({ field: 'tahun_terbit', message: 'Tahun terbit harus berupa angka 4 digit' });
     }
   }
 
   let stokTotal = existingBook.stok_total;
   if (hasField('stok_total')) {
-    stokTotal = Number(body.stok_total);
-    if (!Number.isInteger(stokTotal) || stokTotal < 0) {
+    stokTotal = parseStrictInt(body.stok_total);
+    if (stokTotal === null || stokTotal < 0) {
       errors.push({ field: 'stok_total', message: 'Stok total harus berupa bilangan bulat >= 0' });
     }
   }
@@ -190,13 +181,13 @@ const validateUpdateBook = (body = {}, existingBook) => {
   let stokTersedia = existingBook.stok_tersedia;
   if (hasField('stok_tersedia')) {
     hasExplicitStokTersedia = true;
-    stokTersedia = Number(body.stok_tersedia);
-    if (!Number.isInteger(stokTersedia) || stokTersedia < 0) {
+    stokTersedia = parseStrictInt(body.stok_tersedia);
+    if (stokTersedia === null || stokTersedia < 0) {
       errors.push({
         field: 'stok_tersedia',
         message: 'Stok tersedia harus berupa bilangan bulat >= 0',
       });
-    } else if (Number.isInteger(stokTotal) && stokTotal >= 0 && stokTersedia > stokTotal) {
+    } else if (stokTotal !== null && stokTotal >= 0 && stokTersedia > stokTotal) {
       errors.push({
         field: 'stok_tersedia',
         message: 'Stok tersedia tidak boleh melebihi stok total',

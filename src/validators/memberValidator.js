@@ -1,16 +1,11 @@
 const AppError = require('../utils/AppError');
 const { ACCOUNT_STATUS, ROLES } = require('../constants/enums');
+const { parseStrictPositiveId } = require('../utils/validation');
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_PASSWORD_LENGTH = 6;
 
-const parseMemberId = (rawId) => {
-  const id = Number(rawId);
-  if (!Number.isInteger(id) || id <= 0) {
-    throw new AppError('ID anggota tidak valid', 400);
-  }
-  return id;
-};
+const parseMemberId = (rawId) => parseStrictPositiveId(rawId, 'ID anggota');
 
 const parseMemberQuery = (query = {}) => {
   const rawSearch = query.q ?? query.search ?? '';

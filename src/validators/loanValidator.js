@@ -1,15 +1,10 @@
 const AppError = require('../utils/AppError');
 const { LOAN_STATUS, ROLES } = require('../constants/enums');
+const { parseStrictInt, parseStrictPositiveId } = require('../utils/validation');
 
 const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
-const parseLoanId = (rawId) => {
-  const id = Number(rawId);
-  if (!Number.isInteger(id) || id <= 0) {
-    throw new AppError('ID peminjaman tidak valid', 400);
-  }
-  return id;
-};
+const parseLoanId = (rawId) => parseStrictPositiveId(rawId, 'ID peminjaman');
 
 const isValidDateString = (dateStr) => {
   if (typeof dateStr !== 'string' || !DATE_REGEX.test(dateStr)) return false;
@@ -76,20 +71,12 @@ const parseLoanQuery = (query = {}) => {
 
   let idAnggota = null;
   if (query.id_anggota !== undefined && query.id_anggota !== '') {
-    const parsed = Number(query.id_anggota);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      throw new AppError('Parameter id_anggota tidak valid', 400);
-    }
-    idAnggota = parsed;
+    idAnggota = parseStrictPositiveId(query.id_anggota, 'Parameter id_anggota');
   }
 
   let idBuku = null;
   if (query.id_buku !== undefined && query.id_buku !== '') {
-    const parsed = Number(query.id_buku);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      throw new AppError('Parameter id_buku tidak valid', 400);
-    }
-    idBuku = parsed;
+    idBuku = parseStrictPositiveId(query.id_buku, 'Parameter id_buku');
   }
 
   return { search, statusPeminjaman, idAnggota, idBuku };
@@ -98,17 +85,17 @@ const parseLoanQuery = (query = {}) => {
 const validateCreateLoan = (body = {}, userRole) => {
   const errors = [];
 
-  const idBuku = Number(body.id_buku);
+  const idBuku = parseStrictInt(body.id_buku);
   if (body.id_buku === undefined || body.id_buku === null || body.id_buku === '') {
     errors.push({ field: 'id_buku', message: 'Buku wajib dipilih' });
-  } else if (!Number.isInteger(idBuku) || idBuku <= 0) {
+  } else if (idBuku === null || idBuku <= 0) {
     errors.push({ field: 'id_buku', message: 'ID buku tidak valid' });
   }
 
   let jumlah = 1;
   if (body.jumlah !== undefined && body.jumlah !== null && body.jumlah !== '') {
-    jumlah = Number(body.jumlah);
-    if (!Number.isInteger(jumlah) || jumlah < 1) {
+    jumlah = parseStrictInt(body.jumlah);
+    if (jumlah === null || jumlah < 1) {
       errors.push({ field: 'jumlah', message: 'Jumlah pinjam minimal 1 eksemplar' });
     }
   }
@@ -118,10 +105,10 @@ const validateCreateLoan = (body = {}, userRole) => {
   let tanggalJatuhTempo = null;
 
   if (userRole === ROLES.ADMIN) {
-    idAnggota = Number(body.id_anggota);
+    idAnggota = parseStrictInt(body.id_anggota);
     if (body.id_anggota === undefined || body.id_anggota === null || body.id_anggota === '') {
       errors.push({ field: 'id_anggota', message: 'Anggota peminjam wajib dipilih' });
-    } else if (!Number.isInteger(idAnggota) || idAnggota <= 0) {
+    } else if (idAnggota === null || idAnggota <= 0) {
       errors.push({ field: 'id_anggota', message: 'ID anggota tidak valid' });
     }
 
