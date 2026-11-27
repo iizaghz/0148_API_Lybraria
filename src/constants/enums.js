@@ -1,0 +1,36 @@
+const ROLES = Object.freeze({
+  ADMIN: 'ADMIN',
+  ANGGOTA: 'ANGGOTA',
+});
+
+const ACCOUNT_STATUS = Object.freeze({
+  AKTIF: 'AKTIF',
+  NONAKTIF: 'NONAKTIF',
+});
+
+const LOAN_STATUS = Object.freeze({
+  DIAJUKAN: 'DIAJUKAN',
+  DIPINJAM: 'DIPINJAM',
+  DIKEMBALIKAN: 'DIKEMBALIKAN',
+  TERLAMBAT: 'TERLAMBAT',
+  DITOLAK: 'DITOLAK',
+  DIBATALKAN: 'DIBATALKAN',
+});
+
+const FINE_STATUS = Object.freeze({
+  BELUM_LUNAS: 'BELUM_LUNAS',
+  LUNAS: 'LUNAS',
+});
+
+const BUSINESS_RULES = Object.freeze({
+  DEFAULT_LOAN_DAYS: 7,
+  DEFAULT_FINE_PER_DAY: 1000,
+});
+
+module.exports = {
+  ROLES,
+  ACCOUNT_STATUS,
+  LOAN_STATUS,
+  FINE_STATUS,
+  BUSINESS_RULES,
+};

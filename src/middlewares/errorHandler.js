@@ -6,16 +6,43 @@ const notFoundHandler = (req, res) => {
 };
 
 const errorHandler = (err, req, res, next) => {
-  console.error('[ERROR]', err);
+  let statusCode = err.statusCode || 500;
+  let message = err.message || 'Terjadi kesalahan pada server';
+  const errors = err.errors || null;
 
-  const statusCode = err.statusCode || 500;
-  const message = err.message || 'Terjadi kesalahan pada server';
+  // Handle common PostgreSQL errors
+  if (err.code === '23505') {
+    statusCode = 409;
+    message = 'Data sudah terdaftar (duplikasi nilai unik)';
+  } else if (err.code === '23503') {
+    statusCode = 409;
+    message = 'Operasi ditolak karena data masih berelasi dengan data lain';
+  } else if (err.code === '22P02') {
+    statusCode = 400;
+    message = 'Format parameter atau tipe data tidak valid';
+  } else if (err.code === '23514') {
+    statusCode = 400;
+    message = 'Data melanggar aturan validasi basis data';
+  }
 
-  res.status(statusCode).json({
+  if (statusCode >= 500) {
+    console.error('[ERROR]', err);
+  }
+
+  const payload = {
     success: false,
     message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
-  });
+  };
+
+  if (errors) {
+    payload.errors = errors;
+  }
+
+  if (process.env.NODE_ENV === 'development' && statusCode >= 500) {
+    payload.stack = err.stack;
+  }
+
+  res.status(statusCode).json(payload);
 };
 
 module.exports = {
