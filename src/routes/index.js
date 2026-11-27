@@ -1,5 +1,6 @@
 const express = require('express');
 const db = require('../config/db');
+const authRoutes = require('./authRoutes');
 
 const router = express.Router();
 
@@ -19,5 +20,7 @@ router.get('/health', async (req, res, next) => {
     next(error);
   }
 });
+
+router.use('/auth', authRoutes);
 
 module.exports = router;
