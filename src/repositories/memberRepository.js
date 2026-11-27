@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { ROLES, ACCOUNT_STATUS, LOAN_STATUS, FINE_STATUS } = require('../constants/enums');
+const { escapeLikePattern } = require('../utils/validation');
 
 // FR-27: Tidak pernah men-SELECT password_hash atau refresh_token_hash
 const SAFE_MEMBER_FIELDS = `
@@ -38,10 +39,10 @@ const findAllMembers = async ({ search = null, statusAkun = null } = {}) => {
   }
 
   if (search) {
-    params.push(`%${search}%`);
+    params.push(`%${escapeLikePattern(search)}%`);
     const idx = params.length;
     conditions.push(
-      `(COALESCE(a.nim, '') ILIKE $${idx} OR a.nama_lengkap ILIKE $${idx} OR a.email ILIKE $${idx} OR COALESCE(a.program_studi, '') ILIKE $${idx})`
+      `(COALESCE(a.nim, '') ILIKE $${idx} ESCAPE '\\' OR a.nama_lengkap ILIKE $${idx} ESCAPE '\\' OR a.email ILIKE $${idx} ESCAPE '\\' OR COALESCE(a.program_studi, '') ILIKE $${idx} ESCAPE '\\')`
     );
   }
 
@@ -192,7 +193,8 @@ const updateMember = async (idAnggota, data) => {
     setClauses.push(`password_hash = $${params.length}`);
   }
 
-  if (data.status_akun === ACCOUNT_STATUS.NONAKTIF) {
+  // Revokasi sesi lama saat akun dinonaktifkan atau kata sandi direset
+  if (data.status_akun === ACCOUNT_STATUS.NONAKTIF || data.password_hash) {
     setClauses.push('refresh_token_hash = NULL');
   }
 

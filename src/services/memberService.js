@@ -63,6 +63,10 @@ const updateMember = async (idAnggota, rawBody, currentAdminId) => {
     );
   }
 
+  if (existing.role !== ROLES.ANGGOTA) {
+    throw new AppError('Hanya akun dengan peran ANGGOTA yang dapat diubah di menu ini', 403);
+  }
+
   if (validated.nim) {
     const dupNim = await memberRepository.findByNim(validated.nim, idAnggota);
     if (dupNim) {
