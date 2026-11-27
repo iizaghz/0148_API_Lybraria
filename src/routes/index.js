@@ -4,6 +4,7 @@ const authRoutes = require('./authRoutes');
 const categoryRoutes = require('./categoryRoutes');
 const bookRoutes = require('./bookRoutes');
 const memberRoutes = require('./memberRoutes');
+const loanRoutes = require('./loanRoutes');
 
 const router = express.Router();
 
@@ -28,5 +29,6 @@ router.use('/auth', authRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/books', bookRoutes);
 router.use('/members', memberRoutes);
+router.use('/loans', loanRoutes);
 
 module.exports = router;
