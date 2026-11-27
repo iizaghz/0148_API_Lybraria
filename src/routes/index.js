@@ -3,6 +3,7 @@ const db = require('../config/db');
 const authRoutes = require('./authRoutes');
 const categoryRoutes = require('./categoryRoutes');
 const bookRoutes = require('./bookRoutes');
+const memberRoutes = require('./memberRoutes');
 
 const router = express.Router();
 
@@ -26,5 +27,6 @@ router.get('/health', async (req, res, next) => {
 router.use('/auth', authRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/books', bookRoutes);
+router.use('/members', memberRoutes);
 
 module.exports = router;
