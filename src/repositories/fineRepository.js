@@ -1,4 +1,14 @@
 const db = require('../config/db');
+const { escapeLikePattern } = require('../utils/validation');
+
+const normalizeFineRow = (row) => {
+  if (!row) return null;
+  return {
+    ...row,
+    tarif_per_hari: row.tarif_per_hari !== null ? Number(row.tarif_per_hari) : null,
+    total_denda: row.total_denda !== null ? Number(row.total_denda) : null,
+  };
+};
 
 const FINE_SELECT_FIELDS = `
   d.id_denda,
@@ -46,14 +56,14 @@ const findAll = async ({
   }
 
   if (search) {
-    params.push(`%${search}%`);
+    params.push(`%${escapeLikePattern(search)}%`);
     const idx = params.length;
     if (isAdmin) {
       conditions.push(
-        `(p.kode_peminjaman ILIKE $${idx} OR b.judul ILIKE $${idx} OR COALESCE(a.nim, '') ILIKE $${idx} OR a.nama_lengkap ILIKE $${idx})`
+        `(p.kode_peminjaman ILIKE $${idx} ESCAPE '\\' OR b.judul ILIKE $${idx} ESCAPE '\\' OR COALESCE(a.nim, '') ILIKE $${idx} ESCAPE '\\' OR a.nama_lengkap ILIKE $${idx} ESCAPE '\\')`
       );
     } else {
-      conditions.push(`(p.kode_peminjaman ILIKE $${idx} OR b.judul ILIKE $${idx})`);
+      conditions.push(`(p.kode_peminjaman ILIKE $${idx} ESCAPE '\\' OR b.judul ILIKE $${idx} ESCAPE '\\')`);
     }
   }
 
@@ -70,7 +80,7 @@ const findAll = async ({
   `;
 
   const result = await db.query(sql, params);
-  return result.rows;
+  return result.rows.map(normalizeFineRow);
 };
 
 const findById = async (idDenda) => {
@@ -84,7 +94,7 @@ const findById = async (idDenda) => {
     LIMIT 1
   `;
   const result = await db.query(sql, [idDenda]);
-  return result.rows[0] || null;
+  return normalizeFineRow(result.rows[0] || null);
 };
 
 const findByLoanId = async (idPeminjaman) => {
@@ -168,7 +178,12 @@ const remove = async (idDenda) => {
     RETURNING id_denda, id_peminjaman, total_denda, status_denda
   `;
   const result = await db.query(sql, [idDenda]);
-  return result.rows[0] || null;
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    ...row,
+    total_denda: row.total_denda !== null ? Number(row.total_denda) : null,
+  };
 };
 
 module.exports = {

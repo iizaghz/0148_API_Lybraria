@@ -1,12 +1,13 @@
 const db = require('../config/db');
+const { escapeLikePattern } = require('../utils/validation');
 
 const findAll = async ({ search } = {}) => {
   const params = [];
   let whereClause = '';
 
   if (search) {
-    params.push(`%${search}%`);
-    whereClause = `WHERE k.nama_kategori ILIKE $1 OR COALESCE(k.deskripsi, '') ILIKE $1`;
+    params.push(`%${escapeLikePattern(search)}%`);
+    whereClause = `WHERE k.nama_kategori ILIKE $1 ESCAPE '\\' OR COALESCE(k.deskripsi, '') ILIKE $1 ESCAPE '\\'`;
   }
 
   const sql = `

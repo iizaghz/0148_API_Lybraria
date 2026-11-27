@@ -1,5 +1,15 @@
 const db = require('../config/db');
 const { LOAN_STATUS } = require('../constants/enums');
+const { escapeLikePattern } = require('../utils/validation');
+
+const normalizeLoanRow = (row) => {
+  if (!row) return null;
+  return {
+    ...row,
+    tarif_per_hari: row.tarif_per_hari !== null ? Number(row.tarif_per_hari) : null,
+    total_denda: row.total_denda !== null ? Number(row.total_denda) : null,
+  };
+};
 
 const LOAN_SELECT_FIELDS = `
   p.id_peminjaman,
@@ -68,14 +78,14 @@ const findAll = async ({
   }
 
   if (search) {
-    params.push(`%${search}%`);
+    params.push(`%${escapeLikePattern(search)}%`);
     const idx = params.length;
     if (isAdmin) {
       conditions.push(
-        `(p.kode_peminjaman ILIKE $${idx} OR b.judul ILIKE $${idx} OR COALESCE(a.nim, '') ILIKE $${idx} OR a.nama_lengkap ILIKE $${idx})`
+        `(p.kode_peminjaman ILIKE $${idx} ESCAPE '\\' OR b.judul ILIKE $${idx} ESCAPE '\\' OR COALESCE(a.nim, '') ILIKE $${idx} ESCAPE '\\' OR a.nama_lengkap ILIKE $${idx} ESCAPE '\\')`
       );
     } else {
-      conditions.push(`(p.kode_peminjaman ILIKE $${idx} OR b.judul ILIKE $${idx})`);
+      conditions.push(`(p.kode_peminjaman ILIKE $${idx} ESCAPE '\\' OR b.judul ILIKE $${idx} ESCAPE '\\')`);
     }
   }
 
@@ -92,7 +102,7 @@ const findAll = async ({
   `;
 
   const result = await db.query(sql, params);
-  return result.rows;
+  return result.rows.map(normalizeLoanRow);
 };
 
 const findById = async (idPeminjaman, client = db) => {
@@ -106,7 +116,7 @@ const findById = async (idPeminjaman, client = db) => {
     LIMIT 1
   `;
   const result = await client.query(sql, [idPeminjaman]);
-  return result.rows[0] || null;
+  return normalizeLoanRow(result.rows[0] || null);
 };
 
 const findRawForUpdate = async (idPeminjaman, client) => {
