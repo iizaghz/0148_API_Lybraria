@@ -260,7 +260,17 @@ describe('Late Fine Management CRUDS (FR-40 s/d FR-46) & Dashboard Summary', () 
     });
     assert.equal(doublePay.status, 400);
 
-    // FR-44: Denda LUNAS tidak boleh dihapus (409)
+    // FR-44: Denda LUNAS tidak boleh dikembalikan ke BELUM_LUNAS (409) atau dihapus (409)
+    const revertPaid = await fetch(`${baseUrl}/api/fines/${fineId1}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({ status_denda: 'BELUM_LUNAS' }),
+    });
+    assert.equal(revertPaid.status, 409);
+
     const delPaid = await fetch(`${baseUrl}/api/fines/${fineId1}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${adminToken}` },

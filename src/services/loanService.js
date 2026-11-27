@@ -357,6 +357,7 @@ const returnLoan = async (idPeminjaman, payload) => {
     );
 
     // FR-37 & FR-40: Hitung keterlambatan dan buat catatan denda otomatis bila terlambat
+    // dan belum ada catatan denda korektif sebelumnya untuk peminjaman ini
     if (loan.tanggal_jatuh_tempo) {
       const hariTerlambat = Math.max(
         0,
@@ -364,20 +365,23 @@ const returnLoan = async (idPeminjaman, payload) => {
       );
 
       if (hariTerlambat > 0) {
-        const tarifPerHari = BUSINESS_RULES.DEFAULT_FINE_PER_DAY;
-        const totalDenda = hariTerlambat * tarifPerHari;
+        const alreadyHasFine = await loanRepository.hasAssociatedFine(idPeminjaman, client);
+        if (!alreadyHasFine) {
+          const tarifPerHari = BUSINESS_RULES.DEFAULT_FINE_PER_DAY;
+          const totalDenda = hariTerlambat * tarifPerHari;
 
-        await loanRepository.createAutoFine(
-          {
-            id_peminjaman: idPeminjaman,
-            hari_terlambat: hariTerlambat,
-            tarif_per_hari: tarifPerHari,
-            total_denda: totalDenda,
-            status_denda: FINE_STATUS.BELUM_LUNAS,
-            keterangan: `Denda keterlambatan pengembalian otomatis (${hariTerlambat} hari)`,
-          },
-          client
-        );
+          await loanRepository.createAutoFine(
+            {
+              id_peminjaman: idPeminjaman,
+              hari_terlambat: hariTerlambat,
+              tarif_per_hari: tarifPerHari,
+              total_denda: totalDenda,
+              status_denda: FINE_STATUS.BELUM_LUNAS,
+              keterangan: `Denda keterlambatan pengembalian otomatis (${hariTerlambat} hari)`,
+            },
+            client
+          );
+        }
       }
     }
 

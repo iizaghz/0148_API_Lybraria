@@ -1,7 +1,7 @@
 const AppError = require('../utils/AppError');
 const fineRepository = require('../repositories/fineRepository');
 const { validateUpdateFine } = require('../validators/fineValidator');
-const { ROLES, FINE_STATUS } = require('../constants/enums');
+const { ROLES, FINE_STATUS, LOAN_STATUS } = require('../constants/enums');
 
 const listFines = async (filters, currentUser) => {
   const isAdmin = currentUser.role === ROLES.ADMIN;
@@ -33,6 +33,18 @@ const createFine = async (data) => {
     throw new AppError('Transaksi peminjaman tidak ditemukan', 404);
   }
 
+  const invalidStatuses = [
+    LOAN_STATUS.DIAJUKAN,
+    LOAN_STATUS.DITOLAK,
+    LOAN_STATUS.DIBATALKAN,
+  ];
+  if (invalidStatuses.includes(loan.status_peminjaman)) {
+    throw new AppError(
+      `Denda tidak dapat dibuat untuk transaksi peminjaman berstatus ${loan.status_peminjaman}`,
+      400
+    );
+  }
+
   // FR-40: Jaga keunikan id_peminjaman (maks 1 denda per peminjaman)
   const existingFine = await fineRepository.findByLoanId(data.id_peminjaman);
   if (existingFine) {
@@ -52,6 +64,27 @@ const updateFine = async (idDenda, rawBody) => {
   }
 
   const validated = validateUpdateFine(rawBody, existing);
+
+  // Arsip pelunasan final: denda LUNAS tidak boleh dikembalikan ke BELUM_LUNAS atau diubah nominalnya
+  if (existing.status_denda === FINE_STATUS.LUNAS) {
+    if (validated.status_denda !== FINE_STATUS.LUNAS) {
+      throw new AppError(
+        'Status denda yang sudah LUNAS tidak dapat dikembalikan menjadi BELUM_LUNAS',
+        409
+      );
+    }
+    if (
+      validated.hari_terlambat !== existing.hari_terlambat ||
+      validated.tarif_per_hari !== Number(existing.tarif_per_hari) ||
+      validated.total_denda !== Number(existing.total_denda)
+    ) {
+      throw new AppError(
+        'Nominal denda yang sudah LUNAS tidak dapat diubah; hanya keterangan yang dapat diperbarui',
+        409
+      );
+    }
+  }
+
   return fineRepository.update(idDenda, validated);
 };
 
