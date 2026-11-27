@@ -1,3 +1,4 @@
+const db = require('../config/db');
 const AppError = require('../utils/AppError');
 const bookRepository = require('../repositories/bookRepository');
 const categoryRepository = require('../repositories/categoryRepository');
@@ -45,73 +46,98 @@ const createBook = async (data) => {
 };
 
 const updateBook = async (idBuku, rawBody) => {
-  const existingBook = await bookRepository.findById(idBuku);
-  if (!existingBook) {
-    throw new AppError('Buku tidak ditemukan', 404);
-  }
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  const validated = validateUpdateBook(rawBody, existingBook);
-
-  const category = await categoryRepository.findById(validated.id_kategori);
-  if (!category) {
-    throw new AppError('Kategori buku tidak ditemukan', 404);
-  }
-
-  const dupKode = await bookRepository.findByKodeBuku(validated.kode_buku, idBuku);
-  if (dupKode) {
-    throw new AppError(`Kode buku "${validated.kode_buku}" sudah digunakan buku lain`, 409);
-  }
-
-  if (validated.isbn) {
-    const dupIsbn = await bookRepository.findByIsbn(validated.isbn, idBuku);
-    if (dupIsbn) {
-      throw new AppError(`ISBN "${validated.isbn}" sudah digunakan buku lain`, 409);
+    // Lock baris buku (FOR UPDATE) agar perhitungan stok bebas race condition dengan sirkulasi (NFR-06)
+    const existingBook = await bookRepository.lockByIdForUpdate(idBuku, client);
+    if (!existingBook) {
+      throw new AppError('Buku tidak ditemukan', 404);
     }
-  }
 
-  // FR-12: Pastikan stok_total tidak lebih kecil dari eksemplar yang sedang DIPINJAM / TERLAMBAT
-  const borrowedCopies = await bookRepository.getBorrowedCopiesCount(idBuku);
-  if (validated.stok_total < borrowedCopies) {
-    throw new AppError(
-      `Stok total (${validated.stok_total}) tidak boleh lebih kecil dari jumlah buku yang sedang dipinjam (${borrowedCopies})`,
-      400
-    );
-  }
+    const validated = validateUpdateBook(rawBody, existingBook);
 
-  const maxAvailable = validated.stok_total - borrowedCopies;
-  if (!validated.hasExplicitStokTersedia) {
-    validated.stok_tersedia = maxAvailable;
-  } else if (validated.stok_tersedia > maxAvailable) {
-    throw new AppError(
-      `Stok tersedia (${validated.stok_tersedia}) melebihi sisa stok yang tidak sedang dipinjam (${maxAvailable})`,
-      400
-    );
-  }
+    const category = await categoryRepository.findById(validated.id_kategori);
+    if (!category) {
+      throw new AppError('Kategori buku tidak ditemukan', 404);
+    }
 
-  return bookRepository.update(idBuku, validated);
+    const dupKode = await bookRepository.findByKodeBuku(validated.kode_buku, idBuku, client);
+    if (dupKode) {
+      throw new AppError(`Kode buku "${validated.kode_buku}" sudah digunakan buku lain`, 409);
+    }
+
+    if (validated.isbn) {
+      const dupIsbn = await bookRepository.findByIsbn(validated.isbn, idBuku, client);
+      if (dupIsbn) {
+        throw new AppError(`ISBN "${validated.isbn}" sudah digunakan buku lain`, 409);
+      }
+    }
+
+    // FR-12: Pastikan stok_total tidak lebih kecil dari eksemplar yang sedang DIPINJAM / TERLAMBAT
+    const borrowedCopies = await bookRepository.getBorrowedCopiesCount(idBuku, client);
+    if (validated.stok_total < borrowedCopies) {
+      throw new AppError(
+        `Stok total (${validated.stok_total}) tidak boleh lebih kecil dari jumlah buku yang sedang dipinjam (${borrowedCopies})`,
+        400
+      );
+    }
+
+    const maxAvailable = validated.stok_total - borrowedCopies;
+    if (!validated.hasExplicitStokTersedia) {
+      validated.stok_tersedia = maxAvailable;
+    } else if (validated.stok_tersedia > maxAvailable) {
+      throw new AppError(
+        `Stok tersedia (${validated.stok_tersedia}) melebihi sisa stok yang tidak sedang dipinjam (${maxAvailable})`,
+        400
+      );
+    }
+
+    const updated = await bookRepository.update(idBuku, validated, client);
+    await client.query('COMMIT');
+    return updated;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 const deleteBook = async (idBuku) => {
-  const existingBook = await bookRepository.findById(idBuku);
-  if (!existingBook) {
-    throw new AppError('Buku tidak ditemukan', 404);
-  }
+  const client = await db.pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (!existingBook.is_active) {
-    throw new AppError('Buku sudah dalam status nonaktif', 400);
-  }
+    const existingBook = await bookRepository.lockByIdForUpdate(idBuku, client);
+    if (!existingBook) {
+      throw new AppError('Buku tidak ditemukan', 404);
+    }
 
-  // FR-13: Tolak penghapusan jika masih memiliki peminjaman aktif
-  const activeLoans = await bookRepository.countActiveLoans(idBuku);
-  if (activeLoans > 0) {
-    throw new AppError(
-      `Buku tidak dapat dihapus karena masih memiliki ${activeLoans} peminjaman aktif`,
-      409
-    );
-  }
+    if (!existingBook.is_active) {
+      throw new AppError('Buku sudah dalam status nonaktif', 400);
+    }
 
-  // Soft-delete (is_active = FALSE) tanpa menghapus riwayat transaksi
-  return bookRepository.softDelete(idBuku);
+    // FR-13: Tolak penghapusan jika masih memiliki peminjaman aktif
+    const activeLoans = await bookRepository.countActiveLoans(idBuku, client);
+    if (activeLoans > 0) {
+      throw new AppError(
+        `Buku tidak dapat dihapus karena masih memiliki ${activeLoans} peminjaman aktif`,
+        409
+      );
+    }
+
+    // Soft-delete (is_active = FALSE) tanpa menghapus riwayat transaksi
+    const deleted = await bookRepository.softDelete(idBuku, client);
+    await client.query('COMMIT');
+    return deleted;
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 module.exports = {

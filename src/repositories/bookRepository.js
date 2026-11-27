@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { LOAN_STATUS } = require('../constants/enums');
+const { escapeLikePattern } = require('../utils/validation');
 
 const BOOK_SELECT_FIELDS = `
   b.id_buku,
@@ -43,10 +44,10 @@ const findAll = async ({
   }
 
   if (search) {
-    params.push(`%${search}%`);
+    params.push(`%${escapeLikePattern(search)}%`);
     const idx = params.length;
     conditions.push(
-      `(b.judul ILIKE $${idx} OR b.penulis ILIKE $${idx} OR b.kode_buku ILIKE $${idx} OR COALESCE(b.isbn, '') ILIKE $${idx})`
+      `(b.judul ILIKE $${idx} ESCAPE '\\' OR b.penulis ILIKE $${idx} ESCAPE '\\' OR b.kode_buku ILIKE $${idx} ESCAPE '\\' OR COALESCE(b.isbn, '') ILIKE $${idx} ESCAPE '\\')`
     );
   }
 
@@ -64,7 +65,7 @@ const findAll = async ({
   return result.rows;
 };
 
-const findById = async (idBuku) => {
+const findById = async (idBuku, client = db) => {
   const sql = `
     SELECT ${BOOK_SELECT_FIELDS}
     FROM buku b
@@ -72,11 +73,35 @@ const findById = async (idBuku) => {
     WHERE b.id_buku = $1
     LIMIT 1
   `;
-  const result = await db.query(sql, [idBuku]);
+  const result = await client.query(sql, [idBuku]);
   return result.rows[0] || null;
 };
 
-const findByKodeBuku = async (kodeBuku, excludeId = null) => {
+const lockByIdForUpdate = async (idBuku, client) => {
+  const sql = `
+    SELECT
+      id_buku,
+      id_kategori,
+      kode_buku,
+      isbn,
+      judul,
+      penulis,
+      penerbit,
+      tahun_terbit,
+      stok_total,
+      stok_tersedia,
+      lokasi_rak,
+      deskripsi,
+      is_active
+    FROM buku
+    WHERE id_buku = $1
+    FOR UPDATE
+  `;
+  const result = await client.query(sql, [idBuku]);
+  return result.rows[0] || null;
+};
+
+const findByKodeBuku = async (kodeBuku, excludeId = null, client = db) => {
   if (excludeId !== null) {
     const sql = `
       SELECT id_buku, kode_buku
@@ -84,7 +109,7 @@ const findByKodeBuku = async (kodeBuku, excludeId = null) => {
       WHERE LOWER(kode_buku) = LOWER($1) AND id_buku <> $2
       LIMIT 1
     `;
-    const result = await db.query(sql, [kodeBuku, excludeId]);
+    const result = await client.query(sql, [kodeBuku, excludeId]);
     return result.rows[0] || null;
   }
 
@@ -94,11 +119,11 @@ const findByKodeBuku = async (kodeBuku, excludeId = null) => {
     WHERE LOWER(kode_buku) = LOWER($1)
     LIMIT 1
   `;
-  const result = await db.query(sql, [kodeBuku]);
+  const result = await client.query(sql, [kodeBuku]);
   return result.rows[0] || null;
 };
 
-const findByIsbn = async (isbn, excludeId = null) => {
+const findByIsbn = async (isbn, excludeId = null, client = db) => {
   if (!isbn) return null;
 
   if (excludeId !== null) {
@@ -108,7 +133,7 @@ const findByIsbn = async (isbn, excludeId = null) => {
       WHERE LOWER(isbn) = LOWER($1) AND id_buku <> $2
       LIMIT 1
     `;
-    const result = await db.query(sql, [isbn, excludeId]);
+    const result = await client.query(sql, [isbn, excludeId]);
     return result.rows[0] || null;
   }
 
@@ -118,18 +143,18 @@ const findByIsbn = async (isbn, excludeId = null) => {
     WHERE LOWER(isbn) = LOWER($1)
     LIMIT 1
   `;
-  const result = await db.query(sql, [isbn]);
+  const result = await client.query(sql, [isbn]);
   return result.rows[0] || null;
 };
 
-const getBorrowedCopiesCount = async (idBuku) => {
+const getBorrowedCopiesCount = async (idBuku, client = db) => {
   const sql = `
     SELECT COALESCE(SUM(jumlah), 0)::INT AS total_dipinjam
     FROM peminjaman
     WHERE id_buku = $1
       AND status_peminjaman IN ($2, $3)
   `;
-  const result = await db.query(sql, [
+  const result = await client.query(sql, [
     idBuku,
     LOAN_STATUS.DIPINJAM,
     LOAN_STATUS.TERLAMBAT,
@@ -137,14 +162,14 @@ const getBorrowedCopiesCount = async (idBuku) => {
   return result.rows[0].total_dipinjam;
 };
 
-const countActiveLoans = async (idBuku) => {
+const countActiveLoans = async (idBuku, client = db) => {
   const sql = `
     SELECT COUNT(*)::INT AS total_aktif
     FROM peminjaman
     WHERE id_buku = $1
       AND status_peminjaman IN ($2, $3, $4)
   `;
-  const result = await db.query(sql, [
+  const result = await client.query(sql, [
     idBuku,
     LOAN_STATUS.DIAJUKAN,
     LOAN_STATUS.DIPINJAM,
@@ -188,7 +213,7 @@ const create = async (data) => {
   return findById(result.rows[0].id_buku);
 };
 
-const update = async (idBuku, data) => {
+const update = async (idBuku, data, client = db) => {
   const sql = `
     UPDATE buku
     SET
@@ -220,25 +245,26 @@ const update = async (idBuku, data) => {
     data.deskripsi,
     idBuku,
   ];
-  const result = await db.query(sql, params);
+  const result = await client.query(sql, params);
   if (result.rows.length === 0) return null;
-  return findById(result.rows[0].id_buku);
+  return findById(result.rows[0].id_buku, client);
 };
 
-const softDelete = async (idBuku) => {
+const softDelete = async (idBuku, client = db) => {
   const sql = `
     UPDATE buku
     SET is_active = FALSE
     WHERE id_buku = $1
     RETURNING id_buku, kode_buku, judul, is_active, updated_at
   `;
-  const result = await db.query(sql, [idBuku]);
+  const result = await client.query(sql, [idBuku]);
   return result.rows[0] || null;
 };
 
 module.exports = {
   findAll,
   findById,
+  lockByIdForUpdate,
   findByKodeBuku,
   findByIsbn,
   getBorrowedCopiesCount,
