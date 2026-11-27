@@ -264,4 +264,79 @@ describe('Deep Bug Regression & Security Hardening Tests', () => {
     });
     assert.equal(afterReset.status, 401);
   });
+
+  it('Keamanan JWT & bcrypt: Refresh token ditolak di Authorization Bearer, rotasi paralel hanya 1 sukses, & password >72 char ditolak', async () => {
+    // Password > 72 karakter ditolak 400
+    const longPwRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: '2300066666', password: 'A'.repeat(100) }),
+    });
+    assert.equal(longPwRes.status, 400);
+
+    // Login pakai password baru dari test sebelumnya
+    const memberAuth = await loginAs('2300066666', 'NewPassword456!');
+
+    // Refresh token dipakai sebagai Bearer access token harus ditolak 401
+    const confusedRes = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${memberAuth.refresh_token}` },
+    });
+    assert.equal(confusedRes.status, 401);
+
+    // 2 request refresh paralel dengan token sama -> tepat 1 sukses (200) dan 1 gagal (401)
+    const [r1, r2] = await Promise.all([
+      fetch(`${baseUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: memberAuth.refresh_token }),
+      }),
+      fetch(`${baseUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: memberAuth.refresh_token }),
+      }),
+    ]);
+    const statuses = [r1.status, r2.status].sort();
+    assert.deepEqual(statuses, [200, 401]);
+  });
+
+  it('Tanggal kembali ekstrem yang membuat auto-denda melampaui NUMERIC(10,2) ditolak bersih (400, bukan 500)', async () => {
+    const loanRes = await fetch(`${baseUrl}/api/loans`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({
+        id_anggota: tempMemberId,
+        id_buku: tempBookId,
+        jumlah: 1,
+        tanggal_pinjam: '2026-11-01',
+        tanggal_jatuh_tempo: '2026-11-08',
+      }),
+    });
+    const loanId = (await loanRes.json()).data.id_peminjaman;
+    tempLoanIds.push(loanId);
+
+    const extremeReturn = await fetch(`${baseUrl}/api/loans/${loanId}/return`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({ tanggal_kembali: '2999-12-31' }),
+    });
+    assert.equal(extremeReturn.status, 400);
+
+    // Kembalikan dengan tanggal normal agar stok buku pulih bersih
+    const normalReturn = await fetch(`${baseUrl}/api/loans/${loanId}/return`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${adminToken}`,
+      },
+      body: JSON.stringify({ tanggal_kembali: '2026-11-05' }),
+    });
+    assert.equal(normalReturn.status, 200);
+  });
 });
