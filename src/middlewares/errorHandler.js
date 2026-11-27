@@ -6,9 +6,15 @@ const notFoundHandler = (req, res) => {
 };
 
 const errorHandler = (err, req, res, next) => {
-  let statusCode = err.statusCode || 500;
+  let statusCode = err.statusCode || err.status || 500;
   let message = err.message || 'Terjadi kesalahan pada server';
   const errors = err.errors || null;
+
+  // Handle malformed JSON request body
+  if (err.type === 'entity.parse.failed') {
+    statusCode = 400;
+    message = 'Format JSON pada body permintaan tidak valid';
+  }
 
   // Handle common PostgreSQL errors
   if (err.code === '23505') {

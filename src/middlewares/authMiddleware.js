@@ -35,6 +35,10 @@ const authenticate = async (req, res, next) => {
       return next(new AppError('Akun Anda berstatus NONAKTIF', 403));
     }
 
+    if (!user.refresh_token_hash) {
+      return next(new AppError('Sesi telah berakhir, silakan login kembali', 401));
+    }
+
     req.user = {
       id_anggota: user.id_anggota,
       nim: user.nim,

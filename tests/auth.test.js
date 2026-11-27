@@ -169,12 +169,17 @@ describe('Auth & Session Management (FR-01 s/d FR-08)', () => {
     assert.equal(replayRes.status, 401);
   });
 
-  it('FR-08: logout merevokasi refresh token sehingga tidak bisa dipakai lagi', async () => {
+  it('FR-08: logout merevokasi refresh token dan access token sesi sehingga tidak bisa dipakai lagi', async () => {
     const logoutRes = await fetch(`${baseUrl}/api/auth/logout`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${adminAccessToken}` },
     });
     assert.equal(logoutRes.status, 200);
+
+    const afterLogoutMe = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${adminAccessToken}` },
+    });
+    assert.equal(afterLogoutMe.status, 401);
 
     const afterLogoutRefresh = await fetch(`${baseUrl}/api/auth/refresh`, {
       method: 'POST',
@@ -182,5 +187,21 @@ describe('Auth & Session Management (FR-01 s/d FR-08)', () => {
       body: JSON.stringify({ refresh_token: adminRefreshToken }),
     });
     assert.equal(afterLogoutRefresh.status, 401);
+  });
+
+  it('NFR-17: menolak JSON body rusak atau berbentuk array dengan HTTP 400 bersih', async () => {
+    const malformedRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{"identifier": "broken"',
+    });
+    assert.equal(malformedRes.status, 400);
+
+    const arrayRes = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '[]',
+    });
+    assert.equal(arrayRes.status, 400);
   });
 });
